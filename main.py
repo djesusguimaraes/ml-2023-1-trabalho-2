@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from sklearn.calibration import LabelEncoder
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.inspection import DecisionBoundaryDisplay
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
@@ -9,30 +10,32 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from matplotlib import pyplot as plt
 
+def z_score_outliers(df, threshold=3):
+    z_scores = np.abs((df - df.mean()) / df.std())
+
+    outliers = df[(z_scores > threshold).any(axis=1)]
+    
+    return outliers
+    
 def clean_data(data):
+    data_cp = data.copy()
 
-    print(f'Original Shape: \t{data.shape}\n')
+    data_cp = data_cp[data_cp.columns[data_cp.isna().sum()/data_cp.shape[0] < 0.9]]
 
-    data = data.dropna(axis=1, how='all')
-
-    print(f'Not NaN Columns Shape: \t{data.shape}\n')
-
-    data = data.dropna(thresh=10)
-
-    print(f'Not NaN Shape: \t{data.shape}\n')
-
-    string_columns = data.select_dtypes(include=['object']).columns
-
-    print(f'Object Columns count: {len(string_columns)}\n')
-
-    for column in string_columns:
-        data[column] = data[column].astype('category').cat.codes
-
-    data = data.fillna(data.median())
+    for y in data_cp.columns:
+        if data_cp[y].dtype == 'object': 
+            lbl = LabelEncoder()
+            lbl.fit(list(data_cp[y].values))
+            data_cp[y] = lbl.transform(list(data_cp[y].values))
+            
+    outliers = z_score_outliers(data_cp)
     
-    print(f'Filled NaN with Median: \t{data.shape}\n')
+    for outlier in outliers:
+        data_cp.loc[outlier] = np.nan
     
-    return data
+    data_cp = data_cp.fillna(data_cp.median())
+    
+    return data_cp
 
 def print_result(model, X_test, y_test):
     prds = model.predict(X_test)
@@ -94,14 +97,14 @@ def plot_boundary(model, X_train, y_train, model_name):
 if __name__ == "__main__":
     data = pd.read_excel('dataset.xlsx')
     
-    data = clean_data(data)
+    data_copy = clean_data(data)
     
-    print(data['SARS-Cov-2 exam result'].value_counts(normalize=True))
+    print(data_copy['SARS-Cov-2 exam result'].value_counts(normalize=True))
     print('\n')
     
-    x = data.drop(columns=['SARS-Cov-2 exam result'])
-    x = data[['Mean corpuscular volume (MCV)', 'Patient age quantile']]
-    y = data['SARS-Cov-2 exam result']
+    x = data_copy.drop(columns=['SARS-Cov-2 exam result'])
+    x = data_copy[['Mean corpuscular volume (MCV)', 'Patient age quantile']]
+    y = data_copy['SARS-Cov-2 exam result']
     
     scaler =StandardScaler().fit(x)
     x = scaler.transform(x)
